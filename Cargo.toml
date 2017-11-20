@@ -1,0 +1,7 @@
+[package]
+name = "rate-limit"
+version = "0.1.0"
+authors = ["Johannes Hoff <johshoff@gmail.com>"]
+
+[dependencies]
+rand = "0.3"
