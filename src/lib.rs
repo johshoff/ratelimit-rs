@@ -33,8 +33,6 @@ impl FloatBucket {
         let delta_time   = timestamp - self.last_fill_time;
         let delta_tokens = (self.max_tokens as f64) / (self.interval as f64) * (delta_time as f64);
 
-        // println!("{} (+{}) tokens, last={}, current={}, delta={}", self.tokens, delta_tokens, self.last_fill_time, timestamp, delta_time);
-
         if self.tokens + delta_tokens >= 0.99f64 { // imprecisions in float makes this more correct than a strict 1f64
             self.tokens = self.tokens + delta_tokens;
             if self.tokens > self.max_tokens as f64 {
@@ -43,7 +41,6 @@ impl FloatBucket {
             self.tokens -= 1f64;
             self.last_fill_time = timestamp;
 
-            // println!("    accepted: {} (+{}) tokens, last={}, current={}, delta={}", self.tokens, delta_tokens, self.last_fill_time, timestamp, delta_time);
             true
         } else {
             false
@@ -86,8 +83,6 @@ impl IntBucket {
         let delta_token_time = self.max_tokens * delta_time;
         let new_token_time   = self.token_time + delta_token_time;
 
-        // println!("{} (+{}) tokens, last={}, current={}, delta={}", self.token_time, delta_token_time, self.last_fill_time, timestamp, delta_time);
-
         if new_token_time >= self.interval {
             self.token_time = min(self.max_tokens * self.interval, new_token_time) - self.interval;
             self.last_fill_time = timestamp;
@@ -128,21 +123,9 @@ impl IntBucketCombined {
     }
 
     pub fn accept(&mut self, timestamp: u64) -> bool {
-        // no going back in time!
-        // let timestamp = max(timestamp, self.last_fill_time);
         let inflated_timestamp = max(self.max_tokens * timestamp, self.combined);
 
-        // println!("{} (+{}) tokens, last={}, current={}, delta={}", self.token_time, delta_token_time, self.last_fill_time, timestamp, delta_time);
-
-        // original:
-        // let delta_time       = timestamp - self.last_fill_time;
-        // let delta_token_time = self.max_tokens * delta_time;
-        // let new_token_time = self.token_time + delta_token_time;
-
-        // let new_token_time = self.token_time + self.max_tokens * (timestamp - self.last_fill_time); // collapsed
-        // let new_token_time = self.max_tokens * timestamp - (self.max_tokens * self.last_fill_time - self.token_time); // ... by rearranging
-        // let new_token_time = self.max_tokens * timestamp - self.combined; // ... by substitution
-        let new_token_time = inflated_timestamp - self.combined; // ... by substitution
+        let new_token_time = inflated_timestamp - self.combined;
         if new_token_time >= self.interval {
             let token_time = min(self.max_tokens * self.interval, new_token_time) - self.interval;
             self.combined = inflated_timestamp - token_time;
