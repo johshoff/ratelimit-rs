@@ -1,6 +1,5 @@
-#![feature(test)]
+#[cfg(test)]
 extern crate rand;
-extern crate test;
 use std::cmp::{min, max};
 
 pub struct FloatBucket {
@@ -158,7 +157,6 @@ impl IntBucketCombined {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use test::Bencher;
     use rand::Rng;
     use rand::isaac::IsaacRng;
 
@@ -240,19 +238,5 @@ mod tests {
                 }
             }
         }
-    }
-
-
-    #[bench]
-    fn bench_add_two(b: &mut Bencher) {
-        let mut bucket = Bucket::new(3, 10);
-        let mut timestamp = 0;
-        b.iter(|| {
-            for _ in 0..1000 {
-                timestamp += 1;
-                bucket.accept(timestamp);
-            }
-            bucket.accept(timestamp)
-        });
     }
 }
