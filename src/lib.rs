@@ -1,6 +1,9 @@
 #[cfg(test)]
 extern crate rand;
+#[cfg(test)]
+extern crate crossbeam;
 use std::cmp::{min, max};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct FloatBucket {
     // timeunit is probably millisecond but could be anything you want (depending on overflows...)
@@ -100,8 +103,6 @@ pub struct IntBucketCombined {
     max_tokens: u64,
     interval: u64, // non-zero timespan
 
-    // experimental -- using this means we're less explicit, but saving space and making
-    // CAS operations easier (CAS2 is not always available and/or performant)
     // NOTE: if max_tokens is high, this will overflow. Consider max_tokens * max_timestamp (not
     // really a problem for actual plausible values of max_tokens and times. Want a thousand
     // per second until year 3000? Not even close to a problem)
@@ -136,16 +137,92 @@ impl IntBucketCombined {
     }
 }
 
+pub struct IntBucketCombinedMT {
+    // timeunit is probably millisecond but could be anything you want (depending on overflows...)
+
+    // static state
+    max_tokens: usize,
+    interval: usize, // non-zero timespan
+
+    // experimental -- using this means we're less explicit, but saving space and making
+    // CAS operations easier (CAS2 is not always available and/or performant)
+    // NOTE: if max_tokens is high, this will overflow. Consider max_tokens * max_timestamp (not
+    // really a problem for actual plausible values of max_tokens and times. Want a thousand
+    // per second until year 3000? Not even close to a problem when Usize is 64 bits)
+    combined: AtomicUsize,
+}
+
+impl IntBucketCombinedMT {
+    // A new bucket that will be filled on first accept (given that it's later than epoch)
+    pub fn new(max_tokens: usize, interval: usize) -> IntBucketCombinedMT {
+        if interval == 0 {
+            panic!("Can't have 0 interval for Bucket");
+        }
+
+        IntBucketCombinedMT {
+           max_tokens: max_tokens,
+           interval: interval,
+           combined: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn accept(&self, timestamp: usize) -> bool {
+        loop {
+            let current_combined = self.combined.load(Ordering::Relaxed);
+            let inflated_timestamp = max(self.max_tokens * timestamp, current_combined);
+
+            let new_token_time = inflated_timestamp - current_combined;
+            if new_token_time >= self.interval {
+                let token_time = min(self.max_tokens * self.interval, new_token_time) - self.interval;
+                let new_combined = inflated_timestamp - token_time;
+
+                if self.combined.compare_and_swap(current_combined, new_combined, Ordering::Relaxed) == current_combined {
+                    // we successfully updated the value
+                    return true
+                }
+            } else {
+                return false
+            }
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rand::Rng;
     use rand::isaac::IsaacRng;
+    use std::sync::mpsc::channel;
 
     type Bucket = IntBucketCombined;
 
     // TODO: test going back in time
+
+    #[test]
+    fn multi_threaded_access() {
+        let tokens = 1000;
+        let threads = 10000;
+        let bucket = &IntBucketCombinedMT::new(tokens, 10);
+        let (sender, receiver) = channel();
+
+        crossbeam::scope(|scope| {
+            for _ in 1..threads {
+                let sender = sender.clone();
+                scope.spawn(move || {
+                    sender.send(bucket.accept(10000)).unwrap();
+                });
+            }
+        });
+
+        let mut successes = 0;
+        for _ in 1..threads {
+            if receiver.recv().unwrap() {
+                successes += 1;
+            }
+        }
+        assert!(successes == tokens);
+    }
 
     #[test]
     fn accepts_first() {

@@ -5,3 +5,4 @@ authors = ["Johannes Hoff <johshoff@gmail.com>"]
 
 [dev-dependencies]
 rand = "0.3"
+crossbeam = "0.3"
