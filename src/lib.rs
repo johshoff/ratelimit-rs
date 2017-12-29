@@ -1,9 +1,40 @@
-#[cfg(test)]
-extern crate rand;
-#[cfg(test)]
-extern crate crossbeam;
+#[cfg(test)] extern crate rand;
+#[cfg(test)] extern crate crossbeam;
+#[cfg(test)] #[macro_use] extern crate lazy_static;
+extern crate time;
 use std::cmp::{min, max};
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[macro_export]
+macro_rules! limit {
+    (
+        $max_tokens:expr,
+        $interval:expr,
+        $block:block
+    ) => {
+        lazy_static! {
+            static ref BUCKET : WallClockIntBucketCombinedMT = WallClockIntBucketCombinedMT::new($max_tokens, ($interval as f64 * 1000 as f64) as usize);
+        }
+        if BUCKET.accept() $block
+    }
+}
+
+pub struct WallClockIntBucketCombinedMT {
+    bucket: IntBucketCombinedMT,
+}
+
+impl WallClockIntBucketCombinedMT {
+    pub fn new(max_tokens: usize, interval: usize) -> WallClockIntBucketCombinedMT {
+        WallClockIntBucketCombinedMT {
+            bucket: IntBucketCombinedMT::new(max_tokens, interval)
+        }
+    }
+
+    pub fn accept(&self) -> bool {
+        let timestamp = (time::precise_time_s() * 1000f64) as usize;
+        self.bucket.accept(timestamp)
+    }
+}
 
 pub struct FloatBucket {
     // timeunit is probably millisecond but could be anything you want (depending on overflows...)
@@ -201,8 +232,8 @@ mod tests {
 
     #[test]
     fn multi_threaded_access() {
-        let tokens = 1000;
-        let threads = 10000;
+        let tokens = 100;
+        let threads = 1000;
         let bucket = &IntBucketCombinedMT::new(tokens, 10);
         let (sender, receiver) = channel();
 
@@ -298,5 +329,16 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn static_accepts_first() {
+        let mut i = 0;
+        for _ in 0..100 {
+            limit!(2, 10, {
+                i += 1;
+            });
+        }
+        assert!(i == 2);
     }
 }
