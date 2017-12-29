@@ -13,7 +13,7 @@ macro_rules! limit {
         $block:block
     ) => {
         lazy_static! {
-            static ref BUCKET : WallClockIntBucketCombinedMT = WallClockIntBucketCombinedMT::new($max_tokens, ($interval as f64 * 1000 as f64) as usize);
+            static ref BUCKET : $crate::WallClockIntBucketCombinedMT = $crate::WallClockIntBucketCombinedMT::new($max_tokens, ($interval as f64 * 1000 as f64) as usize);
         }
         if BUCKET.accept() $block
     }
